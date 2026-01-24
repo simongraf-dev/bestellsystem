@@ -7,8 +7,9 @@ class Settings(BaseSettings):
     
     
     # Auth/JWT
-    token_time: int = 60
-    jwt_algorthim: str = 'HS256'
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+    jwt_algorithm: str = 'HS256'
     secret_key: str
     
     # Mail config

@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas.auth import LoginRequest, TokenResponse
+from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest
 from app.models import User
-from app.utils.security import verify_password, create_access_token, create_refresh_token
+from app.utils.security import verify_password, create_access_token, create_refresh_token, decode_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -22,3 +22,19 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
         access_token=access_token,
         refresh_token=refresh_token
 )
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_access_token(request: RefreshRequest):
+    payload = decode_token(request.refresh_token, "refresh")
+    if not payload:
+        raise HTTPException(status_code=401, detail="Refresh Token abgelaufen")
+    
+    access_token = create_access_token({"sub": (payload.get("sub"))})
+    refresh_token = create_refresh_token({"sub": (payload.get("sub"))})
+        
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token
+    )

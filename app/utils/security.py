@@ -1,8 +1,18 @@
 from passlib.context import CryptContext
 
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session, joinedload
+
 from jose import jwt, JWTError
 from datetime import datetime, timedelta, timezone
 from app.config import settings
+
+from app.models.user import User
+from app.models.department import Department
+from app.models.roles import Role
+
+from app.database import get_db
 
 
 # Password
@@ -36,3 +46,20 @@ def decode_token(token: str, expected_type: str = None) -> dict:
         return payload
     except JWTError:
         return None
+    
+
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+def get_current_user(extracted_token: str = Depends(oauth2_scheme), db: Session = Depends(get_db) ) -> User:
+    payload = decode_token(extracted_token, "access")
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token ungültig")
+    user_id = payload.get("sub")
+    user = db.query(User)\
+        .options(joinedload(User.role))\
+        .options(joinedload(User.department))\
+        .filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User nicht in DB")
+    return user

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     # Auth/JWT
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+    temp_token_expire_minutes: int = 3
     jwt_algorithm: str = 'HS256'
     secret_key: str
     
@@ -27,5 +28,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
        
     )
+
+    #2FA
+    two_factor_issuer: str
+
 
 settings = Settings()

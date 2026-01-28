@@ -13,3 +13,4 @@ from app.models.order_item import OrderItem
 from app.models.activity_log import ActivityLog
 from app.models.delivery_days import DeliveryDay
 from app.models.DepartmentSupplier import DepartmentSupplier
+from app.models.article_group import ArticleGroup

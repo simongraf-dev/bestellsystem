@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth
+from app.routers import auth, article, article_groups, users, department, supplier
 from app.config import settings
 
 app = FastAPI(title=settings.app_name, debug=settings.debug)
@@ -15,6 +15,12 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(article.router)
+app.include_router(article_groups.router)
+app.include_router(article.router)
+app.include_router(department.router)
+app.include_router(users.router)
+app.include_router(supplier.router)
 
 @app.get("/")
 def root() -> dict:

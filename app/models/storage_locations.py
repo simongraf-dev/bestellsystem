@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
@@ -9,4 +9,5 @@ class StorageLocation(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)
     department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"))
+    is_active = Column(Boolean, nullable=False, default=True)
     

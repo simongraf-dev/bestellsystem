@@ -1,4 +1,4 @@
-from sqlalchemy import Text, DateTime, Column, ForeignKey, Enum, Date
+from sqlalchemy import Text, DateTime, Column, ForeignKey, Enum, Date, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import enum
@@ -27,3 +27,4 @@ class Order(Base):
     delivery_notes = Column(Text, nullable=True)
     drafted_on = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_on = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)

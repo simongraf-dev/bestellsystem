@@ -12,12 +12,12 @@ router = APIRouter(prefix="/article-groups", tags=["article-groups"])
 
 
 @router.get("/")
-def get_all_article_groups(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_all_article_groups(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return db.query(ArticleGroup).all()
 
 
 @router.get("/{id}")
-def get_article_group(id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_article_group(id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     group = db.query(ArticleGroup).filter(ArticleGroup.id == id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Artikelgruppe nicht gefunden")
@@ -26,7 +26,7 @@ def get_article_group(id: UUID, user: User = Depends(get_current_user), db: Sess
 
 @router.post("/")
 @require_role(["Admin"])
-def create_article_group(name: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_article_group(name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     new_group = ArticleGroup(name=name)
     db.add(new_group)
     db.commit()
@@ -36,7 +36,7 @@ def create_article_group(name: str, user: User = Depends(get_current_user), db: 
 
 @router.patch("/{id}")
 @require_role(["Admin"])
-def update_article_group(id: UUID, name: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_article_group(id: UUID, name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     group = db.query(ArticleGroup).filter(ArticleGroup.id == id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Artikelgruppe nicht gefunden")
@@ -48,7 +48,7 @@ def update_article_group(id: UUID, name: str, user: User = Depends(get_current_u
 
 @router.delete("/{id}")
 @require_role(["Admin"])
-def delete_article_group(id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_article_group(id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     group = db.query(ArticleGroup).filter(ArticleGroup.id == id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Artikelgruppe nicht gefunden")

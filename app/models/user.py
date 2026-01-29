@@ -17,6 +17,6 @@ class User(Base):
     department = relationship("Department")
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"))
     role = relationship("Role")
-    is_active = Column(Boolean, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
     totp_secret = Column(String(255), nullable=True)
     is_2fa_enabled = Column(Boolean, nullable=False, default=False)

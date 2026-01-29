@@ -3,6 +3,8 @@ from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import enum
 
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 class Weekday(enum.Enum):
@@ -19,3 +21,4 @@ class DeliveryDay(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     supplier_id = Column(UUID(as_uuid=True), ForeignKey("suppliers.id"))
     weekday = Column(Enum(Weekday), nullable=False)
+    supplier = relationship("Supplier")

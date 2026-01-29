@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import pyotp
@@ -53,23 +53,23 @@ def refresh_access_token(request: RefreshRequest):
     )
 
 @router.get("/me", response_model = UserResponse)
-def get_me(user: User = Depends(get_current_user)):
-    return user
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
 
 
 # 2FA-Auth
 
 @router.post("/2fa/setup", response_model=TwoFactorSetupResponse)
-def two_fa_auth_setup(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if user.totp_secret:
+def two_fa_auth_setup(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.totp_secret:
         raise HTTPException(status_code=403, detail="2FA-Auth bereits eingerichtet")
     secret = pyotp.random_base32()
-    user.totp_secret = secret
-    db.add(user)
+    current_user.totp_secret = secret
+    db.add(current_user)
     db.commit()
 
     totp = pyotp.TOTP(secret)
-    qr_url = totp.provisioning_uri(name=user.email, issuer_name=settings.two_factor_issuer)
+    qr_url = totp.provisioning_uri(name=current_user.email, issuer_name=settings.two_factor_issuer)
     return TwoFactorSetupResponse(
         secret=secret,
         qr_url = qr_url
@@ -77,14 +77,14 @@ def two_fa_auth_setup(user: User = Depends(get_current_user), db: Session = Depe
     )
     
 @router.post("/2fa/verify")
-def two_fa_setup_verification(entered_code: TwoFactorSetupVerifyRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
-    if not user.totp_secret:
+def two_fa_setup_verification(entered_code: TwoFactorSetupVerifyRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    if not current_user.totp_secret:
         raise HTTPException(status_code=403, detail="Kein Secret vorhanden")
-    totp = pyotp.TOTP(user.totp_secret)
+    totp = pyotp.TOTP(current_user.totp_secret)
     if not totp.verify(entered_code.code):
         raise HTTPException(status_code=403, detail="Code ungültig")
-    user.is_2fa_enabled = True
-    db.add(user)
+    current_user.is_2fa_enabled = True
+    db.add(current_user)
     db.commit()
     return {"message": "2FA erfolgreich eingerichtet"}
 

@@ -6,7 +6,7 @@ from typing import Optional
 from app.database import get_db
 from app.models.supplier import Supplier
 from app.models.user import User
-from app.security import get_current_user, require_role
+from app.utils.security import get_current_user, require_role
 from app.schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse
 
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 @router.get("/", response_model=list[SupplierResponse])
 def get_all_suppliers(
     name: Optional[str] = None,
-    user: User = Depends(get_current_user), 
+    current_user: User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ):
     query = db.query(Supplier).filter(Supplier.is_active == True)
@@ -25,7 +25,7 @@ def get_all_suppliers(
 
 
 @router.get("/{id}", response_model=SupplierResponse)
-def get_supplier(id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_supplier(id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     supplier = db.query(Supplier).filter(Supplier.id == id, Supplier.is_active == True).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Lieferant nicht gefunden")
@@ -34,7 +34,7 @@ def get_supplier(id: UUID, user: User = Depends(get_current_user), db: Session =
 
 @router.post("/", response_model=SupplierResponse)
 @require_role(["Admin"])
-def create_supplier(supplier: SupplierCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_supplier(supplier: SupplierCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     new_supplier = Supplier(**supplier.model_dump())
     db.add(new_supplier)
     db.commit()
@@ -44,7 +44,7 @@ def create_supplier(supplier: SupplierCreate, user: User = Depends(get_current_u
 
 @router.patch("/{id}", response_model=SupplierResponse)
 @require_role(["Admin"])
-def update_supplier(id: UUID, supplier_update: SupplierUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_supplier(id: UUID, supplier_update: SupplierUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     supplier = db.query(Supplier).filter(Supplier.id == id, Supplier.is_active == True).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Lieferant nicht gefunden")
@@ -60,7 +60,7 @@ def update_supplier(id: UUID, supplier_update: SupplierUpdate, user: User = Depe
 
 @router.delete("/{id}")
 @require_role(["Admin"])
-def delete_supplier(id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_supplier(id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     supplier = db.query(Supplier).filter(Supplier.id == id, Supplier.is_active == True).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Lieferant nicht gefunden")

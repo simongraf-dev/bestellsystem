@@ -13,4 +13,5 @@ class Department(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     parent_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
 
-    children = relationship("Department", backref="parent", remote_side=[id])
+    parent = relationship("Department", remote_side=[id], back_populates="children")
+    children = relationship("Department", back_populates="parent")

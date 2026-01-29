@@ -21,7 +21,7 @@ def get_all_articles(
     current_user: User = Depends(get_current_user), 
     db: Session = Depends(get_db)
     ):
-    query = db.query(Article).options(joinedload(Article.article_group)).filter(Article.is_active == True).all()
+    query = db.query(Article).options(joinedload(Article.article_group)).filter(Article.is_active == True)
     
     if name:
         query = query.filter(Article.name.ilike(f"%{name}"))

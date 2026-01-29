@@ -2,6 +2,8 @@ from sqlalchemy import String, Numeric, Column, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 class ArticleSupplier(Base):
@@ -12,3 +14,5 @@ class ArticleSupplier(Base):
     article_number_supplier = Column(String(100), nullable=True)
     price = Column(Numeric(10, 2), nullable=True)
     unit = Column(String(100), nullable=False)
+    article = relationship("Article")
+    supplier = relationship("Supplier")

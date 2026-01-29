@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from typing import Optional
 
@@ -61,7 +61,6 @@ def create_user(
         raise HTTPException(status_code=404, detail="Department existiert nicht")
     existing_role = db.query(Role).filter(
         Role.id == request.role_id, 
-        Role.is_active == True
         ).first() # pyright: ignore[reportOptionalCall]
     if not existing_role:
         raise HTTPException(status_code=404, detail="Role existiert nicht")
@@ -100,7 +99,7 @@ def update_user(
     if id == current_user.id and user_update.is_active == False:
         raise HTTPException(status_code=400, detail="Du kannst dich nicht selbst deaktivieren")
     
-    # Email-Duplikat prüfen (wenn geändert)
+    # Email-Duplikat prüfen
     if user_update.email and user_update.email != user.email:
         existing_mail = db.query(User).filter(
             User.email == user_update.email,
@@ -110,7 +109,7 @@ def update_user(
         if existing_mail:
             raise HTTPException(status_code=400, detail="Email wird bereits verwendet")
     
-    # Department prüfen (wenn geändert)
+    # Department prüfen
     if user_update.department_id:
         existing_department = db.query(Department).filter(
             Department.id == user_update.department_id,
@@ -119,7 +118,7 @@ def update_user(
         if not existing_department:
             raise HTTPException(status_code=404, detail="Department existiert nicht")
     
-    # Role prüfen (wenn geändert)
+    # Role prüfen
     if user_update.role_id:
         existing_role = db.query(Role).filter(Role.id == user_update.role_id).first()
         if not existing_role:
@@ -128,7 +127,7 @@ def update_user(
     # Update durchführen
     update_data = user_update.model_dump(exclude_unset=True)
     
-    # Passwort separat behandeln (hashen!)
+    # Passwort hasshen
     if "password_plain" in update_data:
         password_plain = update_data.pop("password_plain")
         if password_plain:

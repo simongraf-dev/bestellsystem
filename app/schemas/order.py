@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from uuid import UUID
 from typing import Optional
 from datetime import datetime, date
@@ -33,7 +33,7 @@ class ArticleInfo(BaseModel):
 
 class OrderItemCreate(BaseModel):
     article_id: UUID
-    amount: float
+    amount: float = Field(gt=0)
     note: Optional[str] = None
 
 class OrderCreate(BaseModel):
@@ -42,6 +42,13 @@ class OrderCreate(BaseModel):
     additional_articles: Optional[str] = None
     delivery_notes: Optional[str] = None
     department_id: Optional[UUID] = None
+
+    @field_validator('delivery_date')
+    @classmethod
+    def delivery_date_not_in_past(cls, v):
+        if v is not None and v < date.today():
+            raise ValueError('Lieferdatum darf nicht in der Vergangenheit liegen')
+        return v
 
 
 class OrderItemResponse(BaseModel):
@@ -69,3 +76,12 @@ class OrderResponse(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+class OrderUpdate(BaseModel):
+    delivery_date: Optional[date] = None
+    additional_articles: Optional[str] = None
+    delivery_notes: Optional[str] = None
+
+class OrderItemUpdate(BaseModel):
+    amount: Optional[float] = Field(default=None, gt=0)
+    note: Optional[str] = None

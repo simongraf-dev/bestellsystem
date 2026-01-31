@@ -21,3 +21,4 @@ class OrderItem(Base):
     order = relationship("Order", back_populates="items")
     article = relationship("Article")
     supplier = relationship("Supplier")
+    shipping_group = relationship("ShippingGroup", back_populates="items")

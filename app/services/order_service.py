@@ -5,10 +5,11 @@ from uuid import UUID
 import holidays
 from datetime import date, timedelta
 
-from app.models import User, Order, OrderItem, Article, ArticleSupplier, Supplier, ShippingGroup, Department, DeliveryDay
+from app.models import User, Order, OrderItem, Article, ArticleSupplier, Supplier, ShippingGroup, Department, DeliveryDay, ApproverSupplier
 from app.schemas.order import OrderCreate, OrderResponse, OrderItemCreate
 from app.models.delivery_days import Weekday
 from app.utils.security import get_current_user, get_db
+from app.models.order import OrderStatus
 
 WEEKDAY_MAP = {
     0: Weekday.MO,
@@ -19,6 +20,52 @@ WEEKDAY_MAP = {
     5: Weekday.SA,
     6: Weekday.SO,
 }
+
+def _get_editable_departments(db: Session, user_department_id: UUID) -> list[UUID]:
+    """
+    Holt alle Departments die der User bearbeiten darf:
+    - Eigenes Department
+    - Alle Children (rekursiv nach unten)
+    """
+    result = [user_department_id]
+    
+    # Direkte Children holen
+    children = db.query(Department).filter(
+        Department.parent_id == user_department_id,
+        Department.is_active == True
+    ).all()
+    
+    # Rekursiv alle Nachfahren sammeln
+    for child in children:
+        result.extend(_get_editable_departments(db, child.id))
+    
+    return result
+
+
+def _can_edit_order(db: Session, user: User, order: Order) -> bool:
+    """
+    Prüft ob User diese Order bearbeiten darf:
+    - Admin: immer (wenn Status ENTWURF oder VOLLSTAENDIG)
+    - Bedarfsmelder: nur eigenes Department + Children, nur ENTWURF
+    - Freigeber: eigenes Department + Children, auch VOLLSTAENDIG
+    """
+    # Bestellte oder stornierte Orders kann niemand bearbeiten
+    if order.status not in [OrderStatus.ENTWURF, OrderStatus.VOLLSTAENDIG]:
+        return False
+    
+    if user.role.name == "Admin":
+        return True
+    
+    editable_departments = _get_editable_departments(db, user.department_id)
+    if order.department_id not in editable_departments:
+        return False
+    
+    # VOLLSTAENDIG nur für Freigeber
+    if order.status == OrderStatus.VOLLSTAENDIG:
+        return user.role.name == "Freigeber"
+    
+    # ENTWURF für alle mit Department-Berechtigung
+    return True
 
 # Helferfunktion um Parentbereiche zu finden
 def _is_descendant_of(department_id: UUID, ancestor_id: UUID, db: Session) -> bool:
@@ -137,4 +184,60 @@ def create_order(db: Session, user: User, order: OrderCreate):
         joinedload(Order.items).joinedload(OrderItem.supplier)
     ).filter(Order.id == new_order.id).first()
     
+
+def add_item_to_order(db: Session,
+                      current_user: User,
+                      order_id: UUID,
+                      item: OrderItemCreate) -> Order:
+    order = db.query(Order).options(
+    joinedload(Order.department),
+    joinedload(Order.creator),
+    joinedload(Order.approver),
+    joinedload(Order.items).joinedload(OrderItem.article),
+    joinedload(Order.items).joinedload(OrderItem.supplier)
+).filter(Order.id == order_id, Order.is_active == True).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Bestellung nicht gefunden")
+    if order.status != OrderStatus.ENTWURF:
+        raise HTTPException(status_code=403, detail="Bestellung kann nur als Entwurf bearbeitet werden")
+    if current_user.role.name != "Admin" and order.department_id != current_user.department_id:
+        raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
+    _process_order_item(db, order, item)
+    db.commit()
+    return db.query(Order).options(
+    joinedload(Order.department),
+    joinedload(Order.creator),
+    joinedload(Order.approver),
+    joinedload(Order.items).joinedload(OrderItem.article),
+    joinedload(Order.items).joinedload(OrderItem.supplier)
+).filter(Order.id == order_id).first()
+
+def close_order(db: Session, user: User, order_id: UUID) -> Order:
+    """
+    ENTWURF → VOLLSTAENDIG
+    - Prüfen: Order existiert?
+    - Prüfen: Status == ENTWURF?
+    - Prüfen: User berechtigt? (eigenes Dept + Children)
+    - Prüfen: Mindestens ein Item vorhanden?
+    - Status ändern
+    """
+    order = db.query(Order).options(
+    joinedload(Order.department),
+    joinedload(Order.creator),
+    joinedload(Order.approver),
+    joinedload(Order.items).joinedload(OrderItem.article),
+    joinedload(Order.items).joinedload(OrderItem.supplier)
+).filter(Order.id == order_id, Order.is_active == True).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Bestellung nicht gefunden")
+    if order.status != OrderStatus.ENTWURF:
+        raise HTTPException(status_code=403, detail="Nur ein Entwurf kann freigegeben werden")
+    if not _can_edit_order(db, user, order):
+        raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
+    if len(order.items) < 1:
+        raise HTTPException(status_code=403, detail="Keine Artikel in dieser Bestellung")
+    order.status = OrderStatus.VOLLSTAENDIG
+    db.commit()
+    db.refresh(order)
+    return order
 

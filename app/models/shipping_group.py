@@ -3,9 +3,11 @@ from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import enum
 
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 
-class Status(enum.Enum):
+class ShippingGroupStatus(enum.Enum):
     OFFEN = "OFFEN"
     VERSENDET = "VERSENDET"
     STORNIERT = "STORNIERT"
@@ -18,4 +20,8 @@ class ShippingGroup(Base):
     delivery_date = Column(Date, nullable=True)
     sender_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     send_date = Column(DateTime, nullable=True)
-    status = Column(Enum(Status), nullable=False, default=Status.OFFEN)
+    status = Column(Enum(ShippingGroupStatus), nullable=False, default=ShippingGroupStatus.OFFEN)
+
+    items = relationship("OrderItem", back_populates="shipping_group")
+    supplier = relationship("Supplier")
+    items = relationship("OrderItem", back_populates="shipping_group")

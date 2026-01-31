@@ -5,8 +5,9 @@ from uuid import UUID
 from app.database import get_db
 from app.models import User, Order, OrderItem, Department
 from app.utils.security import get_current_user, require_role
-from app.schemas.order import OrderCreate, OrderResponse
+from app.schemas.order import OrderCreate, OrderResponse, OrderUpdate, OrderItemCreate, OrderItemResponse
 from app.services import order_service
+from app.models.order import OrderStatus
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -16,25 +17,36 @@ def _get_visible_departments(db: Session, user_department_id: UUID) -> list[UUID
     - Eigenes Department
     - Parent (eine Stufe hoch)
     - Alle Geschwister (Children des Parents)
+    - Alle eigenen Children (eine Stufe runter)
     """
     result = [user_department_id]
     
     # Eigenes Department holen
     department = db.query(Department).filter(Department.id == user_department_id).first()
     
-    if department and department.parent_id:
-        # Parent hinzufügen
-        result.append(department.parent_id)
+    if department:
+        # Parent und Geschwister
+        if department.parent_id:
+            result.append(department.parent_id)
+            
+            siblings = db.query(Department).filter(
+                Department.parent_id == department.parent_id,
+                Department.is_active == True
+            ).all()
+            
+            for sibling in siblings:
+                if sibling.id not in result:
+                    result.append(sibling.id)
         
-        # Alle Geschwister holen (gleicher Parent)
-        siblings = db.query(Department).filter(
-            Department.parent_id == department.parent_id,
+        # Eigene Children hinzufügen
+        children = db.query(Department).filter(
+            Department.parent_id == user_department_id,
             Department.is_active == True
         ).all()
         
-        for sibling in siblings:
-            if sibling.id not in result:
-                result.append(sibling.id)
+        for child in children:
+            if child.id not in result:
+                result.append(child.id)
     
     return result
 
@@ -90,7 +102,7 @@ def create_order(
 ):
     return order_service.create_order(db, current_user, order_data)
 
-
+# Order löschen
 @router.delete("/{id}")
 @require_role(["Admin"])
 def delete_order(
@@ -108,3 +120,52 @@ def delete_order(
     db.commit()
     
     return {"message": "Bestellung gelöscht"}
+
+# Order updaten
+@router.patch("/{id}", response_model=OrderResponse)
+def update_order(
+    id: UUID,
+    order_update: OrderUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    order =  order = db.query(Order).options(
+    joinedload(Order.department),
+    joinedload(Order.creator),
+    joinedload(Order.approver),
+    joinedload(Order.items).joinedload(OrderItem.article),
+    joinedload(Order.items).joinedload(OrderItem.supplier)
+).filter(Order.id == id, Order.is_active == True).first()
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Bestellung nicht gefunden")
+    if order.status != OrderStatus.ENTWURF:
+        raise HTTPException(status_code=403, detail="Bestellung kann nur als Entwurf bearbeitet werden")
+    if current_user.role.name != "Admin" and order.department_id != current_user.department_id:
+        raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
+    update_data = order_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(order, field, value)
+    
+    db.commit()
+    db.refresh(order)
+    return order
+    
+
+@router.post("/{order_id}/items", response_model=OrderResponse)
+def add_order_item(
+    order_id: UUID,
+    item: OrderItemCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return order_service.add_item_to_order(db, current_user, order_id, item)
+
+
+@router.post("/{id}/abschliessen", response_model=OrderResponse)
+def abschliessen_order(
+    id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return order_service.close_order(db, current_user, id)

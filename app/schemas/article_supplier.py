@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from uuid import UUID
 from typing import Optional
 
@@ -19,7 +19,7 @@ class ArticleSupplierCreate(BaseModel):
     article_id: UUID
     supplier_id: UUID
     article_number_supplier: Optional[str] = None
-    price: Optional[float] = None
+    price: Optional[float] = Field(default=None, ge=0)
     unit: str
 
 class ArticleSupplierResponse(BaseModel):

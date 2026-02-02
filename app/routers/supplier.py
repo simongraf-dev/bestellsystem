@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
 
 from app.database import get_db
 from app.models.supplier import Supplier

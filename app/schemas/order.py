@@ -37,7 +37,7 @@ class OrderItemCreate(BaseModel):
     note: Optional[str] = None
 
 class OrderCreate(BaseModel):
-    items: list[OrderItemCreate]
+    items: list[OrderItemCreate] = Field(min_length=1)
     delivery_date: Optional[date] = None
     additional_articles: Optional[str] = None
     delivery_notes: Optional[str] = None

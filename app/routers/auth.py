@@ -20,6 +20,8 @@ def login(credentials: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Email oder Passwort falsch")
     if not verify_password(credentials.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email oder Passwort falsch")
+    if not user.is_active:
+        raise HTTPException(status_code=401, detail="Account deaktiviert")
     if user.is_2fa_enabled:
         temp_token = create_temporary_token({"sub": str(user.id)})
         return LoginResponse(
@@ -82,7 +84,7 @@ def two_fa_setup_verification(entered_code: TwoFactorSetupVerifyRequest, current
         raise HTTPException(status_code=403, detail="Kein Secret vorhanden")
     totp = pyotp.TOTP(current_user.totp_secret)
     if not totp.verify(entered_code.code):
-        raise HTTPException(status_code=403, detail="Code ungültig")
+        raise HTTPException(status_code=401, detail="Code ungültig")
     current_user.is_2fa_enabled = True
     db.add(current_user)
     db.commit()
@@ -101,7 +103,7 @@ def validate_otp(request: TwoFactorValidateRequest, db: Session = Depends(get_db
 
     totp = pyotp.TOTP(user.totp_secret)
     if not totp.verify(request.code):
-        raise HTTPException(status_code=403, detail="Code ungültig")
+        raise HTTPException(status_code=401, detail="Code ungültig")
     
     access_token = create_access_token({"sub": (payload.get("sub"))})
     refresh_token = create_refresh_token({"sub": (payload.get("sub"))})

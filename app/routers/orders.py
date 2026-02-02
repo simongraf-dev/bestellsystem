@@ -89,7 +89,7 @@ def get_order(
     
     # Berechtigung prüfen
     if current_user.role.name != "Admin" and order.department_id != current_user.department_id:
-        raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
+        raise HTTPException(status_code=404, detail="Keine Berechtigung für diese Bestellung")
     
     return order
 
@@ -140,7 +140,7 @@ def update_order(
     if not order:
         raise HTTPException(status_code=404, detail="Bestellung nicht gefunden")
     if order.status != OrderStatus.ENTWURF:
-        raise HTTPException(status_code=403, detail="Bestellung kann nur als Entwurf bearbeitet werden")
+        raise HTTPException(status_code=400, detail="Bestellung kann nur als Entwurf bearbeitet werden")
     if current_user.role.name != "Admin" and order.department_id != current_user.department_id:
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
     update_data = order_update.model_dump(exclude_unset=True)

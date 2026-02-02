@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field
 from uuid import UUID
 from typing import Optional
+
+from pydantic import BaseModel, Field
+
 
 class ArticleInfo(BaseModel):
     id: UUID

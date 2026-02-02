@@ -121,7 +121,7 @@ def _get_and_validate_department(db: Session, user: User, requested_department_i
 def _process_order_item(db: Session, order: Order, item: OrderItemCreate):
     article = db.query(Article).filter(Article.id == item.article_id, Article.is_active == True).first()
     if not article:
-        raise HTTPException(status_code=403, detail="Artikel nicht gefunden")
+        raise HTTPException(status_code=404, detail="Artikel nicht gefunden")
     suppliers = db.query(ArticleSupplier).filter(ArticleSupplier.article_id == item.article_id).all()
     note = item.note
     supplier_id = None
@@ -199,7 +199,7 @@ def add_item_to_order(db: Session,
     if not order:
         raise HTTPException(status_code=404, detail="Bestellung nicht gefunden")
     if order.status != OrderStatus.ENTWURF:
-        raise HTTPException(status_code=403, detail="Bestellung kann nur als Entwurf bearbeitet werden")
+        raise HTTPException(status_code=400, detail="Bestellung kann nur als Entwurf bearbeitet werden")
     if current_user.role.name != "Admin" and order.department_id != current_user.department_id:
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
     _process_order_item(db, order, item)
@@ -231,11 +231,11 @@ def close_order(db: Session, user: User, order_id: UUID) -> Order:
     if not order:
         raise HTTPException(status_code=404, detail="Bestellung nicht gefunden")
     if order.status != OrderStatus.ENTWURF:
-        raise HTTPException(status_code=403, detail="Nur ein Entwurf kann freigegeben werden")
+        raise HTTPException(status_code=400, detail="Nur ein Entwurf kann freigegeben werden")
     if not _can_edit_order(db, user, order):
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
     if len(order.items) < 1:
-        raise HTTPException(status_code=403, detail="Keine Artikel in dieser Bestellung")
+        raise HTTPException(status_code=400, detail="Keine Artikel in dieser Bestellung")
     order.status = OrderStatus.VOLLSTAENDIG
     db.commit()
     db.refresh(order)

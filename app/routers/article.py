@@ -9,7 +9,7 @@ from app.schemas.article import ArticleCreate, ArticleResponse, ArticleUpdate
 from app.database import get_db
 from app.utils.security import get_current_user
 
-from app.models import User, Article
+from app.models import User, Article, ArticleGroup
 
 from app.utils.security import require_role
 
@@ -24,7 +24,7 @@ def get_all_articles(
     query = db.query(Article).options(joinedload(Article.article_group)).filter(Article.is_active == True)
     
     if name:
-        query = query.filter(Article.name.ilike(f"%{name}"))
+        query = query.filter(Article.name.ilike(f"%{name}%"))
     
     return query.all()
 
@@ -38,6 +38,9 @@ def get_article_id(id: UUID, current_user: User = Depends(get_current_user), db:
 @router.post("/", response_model=ArticleResponse)
 @require_role(["Admin"])
 def create_article(article: ArticleCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    group = db.query(ArticleGroup).filter(ArticleGroup.id == article.article_group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Artikelgruppe nicht gefunden")
     new_article = Article(
         name=article.name,
         unit=article.unit,

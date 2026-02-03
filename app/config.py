@@ -14,10 +14,11 @@ class Settings(BaseSettings):
     secret_key: str
     
     # Mail config
-    smtp_server: str = ''
-    smtp_port: str = ''
-    smtp_user: str = ''
-    smtp_password: str = ''
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
 
     # App
     app_name: str = 'TraumGmbH Bestellsystem'
@@ -28,6 +29,13 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
        
     )
+
+    # Absender für PDFs
+    company_name: str = "Firma"
+    company_address: str = ""
+    company_city: str = ""
+    company_phone: str = ""
+    company_email: str = ""
 
     #2FA
     two_factor_issuer: str

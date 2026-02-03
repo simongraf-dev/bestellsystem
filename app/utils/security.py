@@ -13,7 +13,7 @@ from app.config import settings
 
 from app.models.user import User
 from app.models.department import Department
-from app.models.roles import Role
+from app.models.role import Role
 
 from app.database import get_db
 

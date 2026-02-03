@@ -253,6 +253,41 @@ def bedarfsmelder_token(client, bedarfsmelder_user):
     assert response.status_code == 200, f"Bedarfsmelder login failed: {response.json()}"
     return response.json()["access_token"]
 
+@pytest.fixture
+def storage_location(db, department):
+    """Ein Test-Lagerort."""
+    from app.models import StorageLocation
+    
+    location = StorageLocation(
+        name="Kühlhaus",
+        department_id=department.id,
+        is_active=True
+    )
+    db.add(location)
+    db.commit()
+    db.refresh(location)
+    return location
+
+
+@pytest.fixture
+def article_storage_location(db, article, storage_location):
+    """Eine Test-Verknüpfung Artikel ↔ Lagerort."""
+    from app.models import ArticleStorageLocation
+    
+    link = ArticleStorageLocation(
+        article_id=article.id,
+        storage_location_id=storage_location.id
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return link
+
+
+@pytest.fixture
+def user_token(bedarfsmelder_token):
+    """Alias für bedarfsmelder_token - für Tests die einen Nicht-Admin brauchen"""
+    return bedarfsmelder_token
 
 # ============ HELPER FUNKTIONEN ============
 

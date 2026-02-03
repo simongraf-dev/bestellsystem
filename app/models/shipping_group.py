@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Enum, Date, DateTime, ForeignKey
+from sqlalchemy import Column, Enum, Date, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import enum
@@ -20,8 +20,9 @@ class ShippingGroup(Base):
     delivery_date = Column(Date, nullable=True)
     sender_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     send_date = Column(DateTime, nullable=True)
-    status = Column(Enum(ShippingGroupStatus), nullable=False, default=ShippingGroupStatus.OFFEN)
+    status = Column(Enum(ShippingGroupStatus, name="status"), nullable=False, default=ShippingGroupStatus.OFFEN)
+    pdf_path = Column(String(255), nullable=True)  # Pfad zur PDF-Datei
 
     items = relationship("OrderItem", back_populates="shipping_group")
     supplier = relationship("Supplier")
-    items = relationship("OrderItem", back_populates="shipping_group")
+    

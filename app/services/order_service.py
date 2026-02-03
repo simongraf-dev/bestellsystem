@@ -6,10 +6,11 @@ import holidays
 from datetime import date, timedelta
 
 from app.models import User, Order, OrderItem, Article, ArticleSupplier, Supplier, ShippingGroup, Department, DeliveryDay, ApproverSupplier
-from app.schemas.order import OrderCreate, OrderResponse, OrderItemCreate
+from app.schemas.order import OrderCreate, OrderItemCreate
 from app.models.delivery_days import Weekday
 from app.utils.security import get_current_user, get_db
 from app.models.order import OrderStatus
+from app.models.shipping_group import ShippingGroupStatus
 
 WEEKDAY_MAP = {
     0: Weekday.MO,
@@ -147,7 +148,8 @@ def _process_order_item(db: Session, order: Order, item: OrderItemCreate):
     if supplier_id:
         shipping_group = db.query(ShippingGroup).filter(
             ShippingGroup.supplier_id == new_order_item.supplier_id,
-            ShippingGroup.delivery_date == delivery_date
+            ShippingGroup.delivery_date == delivery_date,
+            ShippingGroup.status == ShippingGroupStatus.OFFEN
         ).first()
         if not shipping_group:
             new_shipping_group=ShippingGroup(

@@ -1,14 +1,20 @@
+import os
 from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import User, ShippingGroup, OrderItem, ApproverSupplier
+from app.models import User, ShippingGroup, OrderItem, ApproverSupplier, Order
 from app.models.shipping_group import ShippingGroupStatus
 from app.schemas.shipping_group import ShippingGroupResponse
 from app.utils.security import get_current_user
+
+
+from app.services.pdf_service import generate_shipping_group_pdf
+from app.services.email_service import send_order_email
 
 router = APIRouter(prefix="/shipping-groups", tags=["shipping-groups"])
 
@@ -78,7 +84,7 @@ def get_shipping_group(
 
 
 @router.post("/{id}/freigeben", response_model=ShippingGroupResponse)
-def freigeben_shipping_group(
+async def freigeben_shipping_group(
     id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -86,11 +92,14 @@ def freigeben_shipping_group(
     """
     ShippingGroup freigeben: OFFEN → VERSENDET
     - Prüft Berechtigung (Admin oder Freigeber für diesen Lieferanten)
+    - Generiert PDF und speichert es
+    - Sendet Email an Lieferanten
     """
     shipping_group = db.query(ShippingGroup).options(
         joinedload(ShippingGroup.supplier),
         joinedload(ShippingGroup.items).joinedload(OrderItem.article),
-        joinedload(ShippingGroup.items).joinedload(OrderItem.supplier)
+        joinedload(ShippingGroup.items).joinedload(OrderItem.supplier),
+        joinedload(ShippingGroup.items).joinedload(OrderItem.order).joinedload(Order.department)
     ).filter(ShippingGroup.id == id).first()
     
     if not shipping_group:
@@ -113,12 +122,106 @@ def freigeben_shipping_group(
         if not is_approver:
             raise HTTPException(status_code=403, detail="Keine Freigabe-Berechtigung für diesen Lieferanten")
     
+    # Kurzreferenz generieren
+    short_id = f"SG-{str(shipping_group.id)[:8].upper()}"
+    pdf_path = None
+    
+    # PDF generieren
+    try:
+        pdf_bytes = generate_shipping_group_pdf(
+            db=db,
+            shipping_group=shipping_group,
+            approved_by=current_user.name
+        )
+        
+        # Pfad erstellen: storage/pdfs/2026/02/SG-A7F3B2.pdf
+        today = date.today()
+        pdf_dir = f"storage/pdfs/{today.year}/{today.month:02d}"
+        os.makedirs(pdf_dir, exist_ok=True)
+        
+        pdf_filename = f"{short_id}.pdf"
+        pdf_path = os.path.join(pdf_dir, pdf_filename)
+        
+        # PDF speichern
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+        
+        # Pfad in DB speichern
+        shipping_group.pdf_path = pdf_path
+        
+    except Exception as e:
+        print(f"WARNUNG: PDF-Generierung fehlgeschlagen: {e}")
+    
+    # Email versenden (nur wenn Lieferant Email hat)
+    if shipping_group.supplier and shipping_group.supplier.email and pdf_path:
+        try:
+            email_sent = await send_order_email(
+                to_email=shipping_group.supplier.email,
+                supplier_name=shipping_group.supplier.name,
+                delivery_date=shipping_group.delivery_date,
+                pdf_path=pdf_path,
+                order_reference=short_id
+            )
+            if not email_sent:
+                print(f"WARNUNG: Email an {shipping_group.supplier.email} konnte nicht gesendet werden")
+        except Exception as e:
+            print(f"WARNUNG: Email-Versand fehlgeschlagen: {e}")
+    
     # Status ändern
     shipping_group.status = ShippingGroupStatus.VERSENDET
-    
-    # TODO: Hier später Email/PDF generieren und versenden
+    shipping_group.sender_id = current_user.id
+    shipping_group.send_date = date.today()
     
     db.commit()
     db.refresh(shipping_group)
     
     return shipping_group
+
+
+
+
+@router.get("/{id}/pdf")
+def download_shipping_group_pdf(
+    id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    PDF einer ShippingGroup herunterladen.
+    
+    Nur verfügbar wenn:
+    - ShippingGroup existiert
+    - PDF wurde generiert (status = VERSENDET)
+    - User hat Berechtigung (Admin oder Freigeber für Lieferant)
+    """
+    shipping_group = db.query(ShippingGroup).filter(ShippingGroup.id == id).first()
+    
+    if not shipping_group:
+        raise HTTPException(status_code=404, detail="Versandgruppe nicht gefunden")
+    
+    # Berechtigung prüfen
+    if current_user.role.name != "Admin":
+        is_approver = db.query(ApproverSupplier).filter(
+            ApproverSupplier.user_id == current_user.id,
+            ApproverSupplier.supplier_id == shipping_group.supplier_id
+        ).first()
+        
+        if not is_approver:
+            raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Versandgruppe")
+    
+    # PDF vorhanden?
+    if not shipping_group.pdf_path:
+        raise HTTPException(status_code=404, detail="PDF wurde noch nicht generiert")
+    
+    if not os.path.exists(shipping_group.pdf_path):
+        raise HTTPException(status_code=404, detail="PDF-Datei nicht gefunden")
+    
+    # Dateiname für Download
+    short_id = f"SG-{str(shipping_group.id)[:8].upper()}"
+    filename = f"Bestellung_{short_id}.pdf"
+    
+    return FileResponse(
+        path=shipping_group.pdf_path,
+        filename=filename,
+        media_type="application/pdf"
+    )

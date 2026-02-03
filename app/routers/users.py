@@ -6,7 +6,7 @@ from typing import Optional
 from app.database import get_db
 from app.models.user import User
 from app.models.department import Department
-from app.models.roles import Role
+from app.models.role import Role
 from app.utils.security import get_current_user, require_role, hash_password
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
 

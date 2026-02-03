@@ -5,6 +5,7 @@ from uuid import UUID
 from app.database import get_db
 from app.models import User, Order, OrderItem, Department
 from app.utils.security import get_current_user, require_role
+from app.services.order_service import _can_edit_order
 from app.schemas.order import OrderCreate, OrderResponse, OrderUpdate, OrderItemCreate, OrderItemResponse
 from app.services import order_service
 from app.models.order import OrderStatus
@@ -129,20 +130,21 @@ def update_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    order =  order = db.query(Order).options(
-    joinedload(Order.department),
-    joinedload(Order.creator),
-    joinedload(Order.approver),
-    joinedload(Order.items).joinedload(OrderItem.article),
-    joinedload(Order.items).joinedload(OrderItem.supplier)
-).filter(Order.id == id, Order.is_active == True).first()
+    order = db.query(Order).options(
+        joinedload(Order.department),
+        joinedload(Order.creator),
+        joinedload(Order.approver),
+        joinedload(Order.items).joinedload(OrderItem.article),
+        joinedload(Order.items).joinedload(OrderItem.supplier)
+    ).filter(Order.id == id, Order.is_active == True).first()
     
     if not order:
         raise HTTPException(status_code=404, detail="Bestellung nicht gefunden")
-    if order.status != OrderStatus.ENTWURF:
-        raise HTTPException(status_code=400, detail="Bestellung kann nur als Entwurf bearbeitet werden")
-    if current_user.role.name != "Admin" and order.department_id != current_user.department_id:
+    
+   
+    if not _can_edit_order(db, current_user, order):
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
+    
     update_data = order_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(order, field, value)

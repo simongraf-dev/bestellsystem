@@ -31,8 +31,7 @@ def get_article_supplier(article_id: Optional[UUID] = None,
     return query.all()
 
 
-@router.post("/", response_model=ArticleSupplierResponse)
-@require_role(["Admin"])
+
 @router.post("/", response_model=ArticleSupplierResponse)
 @require_role(["Admin"])
 def create_article_supplier(article_supplier: ArticleSupplierCreate,

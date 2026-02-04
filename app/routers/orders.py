@@ -2,13 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 
-from app.database import get_db
 from app.models import User, Order, OrderItem, Department
+from app.schemas.order import OrderCreate, OrderResponse, OrderUpdate, OrderItemCreate, OrderItemResponse
+from app.models.activity_log import ActionType
+
+from app.services import order_service
+from app.database import get_db
+from app.services.activity_service import log_activity
+from app.services.order_service import _get_action_type_for_field
 from app.utils.security import get_current_user, require_role
 from app.services.order_service import _can_edit_order
-from app.schemas.order import OrderCreate, OrderResponse, OrderUpdate, OrderItemCreate, OrderItemResponse
-from app.services import order_service
-from app.models.order import OrderStatus
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -119,10 +122,10 @@ def delete_order(
     # Soft Delete
     order.is_active = False
     db.commit()
-    
+    log_activity(db, "order", id, current_user.id, ActionType.ORDER_CANCELLED, "Bestellung gelöscht")
     return {"message": "Bestellung gelöscht"}
 
-# Order updaten
+
 @router.patch("/{id}", response_model=OrderResponse)
 def update_order(
     id: UUID,
@@ -146,8 +149,29 @@ def update_order(
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
     
     update_data = order_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(order, field, value)
+   
+
+    # Änderungen tracken
+    for field, new_value in update_data.items():
+        old_value = getattr(order, field)
+        
+        # Nur loggen wenn sich wirklich was geändert hat
+        if old_value != new_value:
+            
+            action_type = _get_action_type_for_field(field)
+            
+            log_activity(
+                db=db,
+                entity_type="order",
+                entity_id=order.id,
+                user_id=current_user.id,
+                action_type=action_type,
+                description=f"{field} geändert",
+                old_value=str(old_value) if old_value else None,
+                new_value=str(new_value) if new_value else None
+            )
+        
+        setattr(order, field, new_value)
     
     db.commit()
     db.refresh(order)

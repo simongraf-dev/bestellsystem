@@ -5,8 +5,10 @@ from datetime import date
 from pathlib import Path
 
 from fastapi_mail import FastMail, MessageSchema, MessageType, ConnectionConfig
-
+import logging
 from app.config import settings
+
+logger = logging.getLogger("app.services.email_service")
 
 
 # ============ KONFIGURATION ============
@@ -41,7 +43,7 @@ async def send_order_email(
     delivery_date: date | None,
     pdf_path: str,
     order_reference: str
-) -> bool:
+) -> dict:
     """
     Sendet Bestellungs-Email mit PDF an Lieferanten.
     
@@ -53,7 +55,7 @@ async def send_order_email(
         order_reference: Bestellnummer (z.B. "SG-A7F3B2")
         
     Returns:
-        True wenn erfolgreich, False bei Fehler
+        Dict mit {"success": bool, "error": str|None}
     """
     # Email-Text
     delivery_text = format_date(delivery_date)
@@ -93,10 +95,10 @@ Tel: {settings.company_phone}
     try:
         fm = FastMail(conf)
         await fm.send_message(message)
-        return True
+        return {"success": True, "error": None}
     except Exception as e:
-        print(f"EMAIL FEHLER: {e}")
-        return False
+        logger.error(f"EMAIL FEHLER: {e}")
+        return {"success": False, "error": str(e)}
 
 
 async def send_order_email_to_supplier(
@@ -158,5 +160,5 @@ Tel: {settings.company_phone}
         await fm.send_message(message)
         return True
     except Exception as e:
-        print(f"EMAIL FEHLER: {e}")
+        logger.error(f"EMAIL FEHLER: {e}")
         return False

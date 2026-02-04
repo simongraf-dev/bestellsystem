@@ -4,8 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import auth, article, article_groups, users, department, supplier, orders, delivery_days, article_supplier, shipping_groups, approver_supplier, order_items, storage_location, article_storage_location, roles
 from app.config import settings
+from app.utils.logging_config import setup_logging
+from app.middleware.logging_middleware import log_requests
 
+
+logger = setup_logging()
+logger.info("Application starting...")
 app = FastAPI(title=settings.app_name, debug=settings.debug)
+
+app.middleware("http")(log_requests)
 
 app.add_middleware(
     CORSMiddleware,

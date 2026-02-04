@@ -8,9 +8,12 @@ from datetime import date, timedelta
 from app.models import User, Order, OrderItem, Article, ArticleSupplier, Supplier, ShippingGroup, Department, DeliveryDay, ApproverSupplier
 from app.schemas.order import OrderCreate, OrderItemCreate
 from app.models.delivery_days import Weekday
-from app.utils.security import get_current_user, get_db
 from app.models.order import OrderStatus
+from app.models.activity_log import ActionType
 from app.models.shipping_group import ShippingGroupStatus
+
+from app.services.activity_service import log_activity
+
 
 WEEKDAY_MAP = {
     0: Weekday.MO,
@@ -21,6 +24,14 @@ WEEKDAY_MAP = {
     5: Weekday.SA,
     6: Weekday.SO,
 }
+
+def _get_action_type_for_field(field: str) -> ActionType:
+    mapping = {
+        "delivery_date": ActionType.DELIVERY_DATE_CHANGED,
+        "delivery_notes": ActionType.DELIVERY_NOTE_CHANGED,
+        "additional_articles": ActionType.ADDITIONAL_ARTICLES_CHANGED,
+    }
+    return mapping.get(field, ActionType.NOTE_CHANGED)
 
 def _get_editable_departments(db: Session, user_department_id: UUID) -> list[UUID]:
     """
@@ -178,6 +189,20 @@ def create_order(db: Session, user: User, order: OrderCreate):
     for item in order.items:
         _process_order_item(db, new_order, item)
     db.commit()
+    log_activity(
+        db=db,
+        entity_type="order",
+        entity_id=new_order.id,
+        user_id=user.id,
+        action_type=ActionType.ORDER_CREATED,
+        description=f"Bestellung für {order.department_id} erstellt",
+        details={
+            "items": [
+                {"article_id": str(item.article_id), "amount": item.amount}
+                for item in order.items
+            ]
+        }
+    )
     return db.query(Order).options(
         joinedload(Order.department),
         joinedload(Order.creator),
@@ -206,6 +231,9 @@ def add_item_to_order(db: Session,
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Bestellung")
     _process_order_item(db, order, item)
     db.commit()
+    log_activity(db,"order", order.id, current_user.id, 
+                ActionType.ITEM_ADDED,
+                f"Artikel hinzugefügt: Menge {item.amount}")
     return db.query(Order).options(
     joinedload(Order.department),
     joinedload(Order.creator),
@@ -222,6 +250,7 @@ def close_order(db: Session, user: User, order_id: UUID) -> Order:
     - Prüfen: User berechtigt? (eigenes Dept + Children)
     - Prüfen: Mindestens ein Item vorhanden?
     - Status ändern
+    - Logging
     """
     order = db.query(Order).options(
     joinedload(Order.department),
@@ -241,5 +270,6 @@ def close_order(db: Session, user: User, order_id: UUID) -> Order:
     order.status = OrderStatus.VOLLSTAENDIG
     db.commit()
     db.refresh(order)
+    log_activity(db, "order", order_id, user.id, ActionType.ORDER_COMPLETED, "Bestellung als vollständig markiert")
     return order
 

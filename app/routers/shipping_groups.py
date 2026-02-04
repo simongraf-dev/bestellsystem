@@ -1,20 +1,27 @@
 import os
 from datetime import date
 from uuid import UUID
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
-from app.database import get_db
+
 from app.models import User, ShippingGroup, OrderItem, ApproverSupplier, Order
 from app.models.shipping_group import ShippingGroupStatus
 from app.schemas.shipping_group import ShippingGroupResponse
-from app.utils.security import get_current_user
+from app.models.activity_log import ActionType
 
-
+from app.database import get_db
 from app.services.pdf_service import generate_shipping_group_pdf
 from app.services.email_service import send_order_email
+from app.utils.security import get_current_user
+from app.services.activity_service import log_activity
+
+
+
+logger = logging.getLogger("app.routers.shipping_groups")
 
 router = APIRouter(prefix="/shipping-groups", tags=["shipping-groups"])
 
@@ -92,8 +99,10 @@ async def freigeben_shipping_group(
     """
     ShippingGroup freigeben: OFFEN → VERSENDET
     - Prüft Berechtigung (Admin oder Freigeber für diesen Lieferanten)
+    - Validiert Lieferdatum
     - Generiert PDF und speichert es
     - Sendet Email an Lieferanten
+    - ActivityLog
     """
     shipping_group = db.query(ShippingGroup).options(
         joinedload(ShippingGroup.supplier),
@@ -108,6 +117,9 @@ async def freigeben_shipping_group(
     # Status prüfen
     if shipping_group.status != ShippingGroupStatus.OFFEN:
         raise HTTPException(status_code=400, detail="Versandgruppe ist nicht offen")
+    
+    if not shipping_group.delivery_date:
+        raise HTTPException(status_code=400, detail="Kein Lieferdatum gesetzt")
     
     if shipping_group.delivery_date and shipping_group.delivery_date < date.today():
         raise HTTPException(status_code=400, detail="Lieferdatum liegt in der Vergangenheit")
@@ -150,7 +162,7 @@ async def freigeben_shipping_group(
         shipping_group.pdf_path = pdf_path
         
     except Exception as e:
-        print(f"WARNUNG: PDF-Generierung fehlgeschlagen: {e}")
+        logger.warning(f"PDF-Generierung fehlgeschlagen: {e}")
     
     # Email versenden (nur wenn Lieferant Email hat)
     if shipping_group.supplier and shipping_group.supplier.email and pdf_path:
@@ -163,9 +175,9 @@ async def freigeben_shipping_group(
                 order_reference=short_id
             )
             if not email_sent:
-                print(f"WARNUNG: Email an {shipping_group.supplier.email} konnte nicht gesendet werden")
+                logger.warning(f"Email an {shipping_group.supplier.email} konnte nicht gesendet werden")
         except Exception as e:
-            print(f"WARNUNG: Email-Versand fehlgeschlagen: {e}")
+            logger.warning(f"Email-Versand fehlgeschlagen: {e}")
     
     # Status ändern
     shipping_group.status = ShippingGroupStatus.VERSENDET
@@ -174,7 +186,19 @@ async def freigeben_shipping_group(
     
     db.commit()
     db.refresh(shipping_group)
-    
+    log_activity(
+        db=db,
+        entity_type="shipping_group", 
+        entity_id=shipping_group.id,
+        user_id=current_user.id,
+        action_type=ActionType.ORDER_SENT,
+        description="Bestellung an Lieferant versendet",
+        details={
+            "supplier_id": str(shipping_group.supplier_id),
+            "delivery_date": str(shipping_group.delivery_date),
+            "item_count": len(shipping_group.items)
+        }
+    )
     return shipping_group
 
 

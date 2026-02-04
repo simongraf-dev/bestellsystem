@@ -15,3 +15,5 @@ alembictest.db
 __pycache__/
 .coverage
 htmlcov/
+
+storage/

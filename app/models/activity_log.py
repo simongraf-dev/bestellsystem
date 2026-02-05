@@ -1,7 +1,9 @@
-from sqlalchemy import Column, DateTime, Enum, Text, Boolean, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID, JSON
 import uuid
 import enum
+
+from sqlalchemy import Column, DateTime, Enum, Text, ForeignKey, String
+from sqlalchemy.dialects.postgresql import UUID, JSON
+from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
 from app.database import Base
@@ -29,6 +31,7 @@ class ActivityLog(Base):
     entity_type = Column(String, nullable=False)
     entity_id = Column(UUID(as_uuid=True), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    user = relationship("User")
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     action_type = Column(Enum(ActionType), nullable=False)
     description = Column(Text, nullable=False)

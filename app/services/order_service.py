@@ -25,13 +25,7 @@ WEEKDAY_MAP = {
     6: Weekday.SO,
 }
 
-def _get_action_type_for_field(field: str) -> ActionType:
-    mapping = {
-        "delivery_date": ActionType.DELIVERY_DATE_CHANGED,
-        "delivery_notes": ActionType.DELIVERY_NOTE_CHANGED,
-        "additional_articles": ActionType.ADDITIONAL_ARTICLES_CHANGED,
-    }
-    return mapping.get(field, ActionType.NOTE_CHANGED)
+
 
 def _get_editable_departments(db: Session, user_department_id: UUID) -> list[UUID]:
     """

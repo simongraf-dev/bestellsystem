@@ -30,6 +30,11 @@ class Settings(BaseSettings):
        
     )
 
+    # Reservierungsssystem 
+    teburio_url: str = ""
+    teburio_token: str = ""
+    teburio_location_id: str = ""
+
     # Absender für PDFs
     company_name: str = "Firma"
     company_address: str = ""

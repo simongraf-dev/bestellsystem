@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, article, article_groups, users, department, supplier, orders, delivery_days, article_supplier, shipping_groups, approver_supplier, order_items, storage_location, article_storage_location, roles
+from app.routers import auth, article, article_groups, users, department, supplier, orders, delivery_days, article_supplier, shipping_groups, approver_supplier, order_items, storage_location, article_storage_location, roles, activities, reservations
 from app.config import settings
 from app.utils.logging_config import setup_logging
 from app.middleware.logging_middleware import log_requests
@@ -37,6 +37,8 @@ app.include_router(approver_supplier.router)
 app.include_router(order_items.router)
 app.include_router(storage_location.router)
 app.include_router(article_storage_location.router)
+app.include_router(activities.router)
+app.include_router(reservations.router)
 
 @app.get("/")
 def root() -> dict:

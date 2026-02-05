@@ -9,11 +9,18 @@ from app.models.activity_log import ActionType
 from app.services import order_service
 from app.database import get_db
 from app.services.activity_service import log_activity
-from app.services.order_service import _get_action_type_for_field
 from app.utils.security import get_current_user, require_role
 from app.services.order_service import _can_edit_order
 
 router = APIRouter(prefix="/orders", tags=["orders"])
+
+def _get_order_action_type_for_field(field: str) -> ActionType:
+    mapping = {
+        "delivery_date": ActionType.DELIVERY_DATE_CHANGED,
+        "delivery_notes": ActionType.DELIVERY_NOTE_CHANGED,
+        "additional_articles": ActionType.ADDITIONAL_ARTICLES_CHANGED,
+    }
+    return mapping.get(field, ActionType.NOTE_CHANGED)
 
 def _get_visible_departments(db: Session, user_department_id: UUID) -> list[UUID]:
     """
@@ -158,7 +165,7 @@ def update_order(
         # Nur loggen wenn sich wirklich was geändert hat
         if old_value != new_value:
             
-            action_type = _get_action_type_for_field(field)
+            action_type = _get_order_action_type_for_field(field)
             
             log_activity(
                 db=db,
@@ -195,3 +202,9 @@ def abschliessen_order(
     db: Session = Depends(get_db)
 ):
     return order_service.close_order(db, current_user, id)
+
+
+# Activity Log Endpunkt
+
+@router.get("/{id}/activities")
+def get

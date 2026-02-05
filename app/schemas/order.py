@@ -85,3 +85,6 @@ class OrderUpdate(BaseModel):
 class OrderItemUpdate(BaseModel):
     amount: Optional[float] = Field(default=None, gt=0)
     note: Optional[str] = None
+
+class OrderItemAssignSupplier(BaseModel):
+    supplier_id: UUID

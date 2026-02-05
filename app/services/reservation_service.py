@@ -1,4 +1,5 @@
 import logging
+import time
 import requests
 from datetime import datetime, date, timedelta, timezone
 
@@ -14,7 +15,49 @@ from app.config import settings
 logger = logging.getLogger("app.services.reservation_service")
 
 # Grenzwert: Buchungen VOR dieser Stunde = Mittag, danach = Abend
-MITTAG_ABEND_GRENZE = 16 
+MITTAG_ABEND_GRENZE = 16
+
+# Retry-Konfiguration
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 2
+
+
+def _get_berlin_tz():
+    """Gibt die Berlin-Timezone zurück (mit Sommer-/Winterzeit)."""
+    if ZoneInfo:
+        return ZoneInfo("Europe/Berlin")
+    # Fallback: UTC+1 für Winter, UTC+2 für Sommer (vereinfacht)
+    # Hinweis: Dieser Fallback ist nicht 100% korrekt für Sommerzeitübergänge
+    return timezone(timedelta(hours=1))
+
+
+def _timestamp_to_berlin_datetime(timestamp_ms: int) -> datetime:
+    """Konvertiert einen Millisekunden-Timestamp in eine Berlin-DateTime."""
+    tz = _get_berlin_tz()
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=tz)
+
+
+def _api_request_with_retry(url: str, payload: dict, headers: dict) -> dict | None:
+    """Führt einen API-Request mit Retry-Logik aus."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = requests.post(
+                url=url,
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            if attempt < MAX_RETRIES - 1:
+                wait_time = RETRY_DELAY_SECONDS * (2 ** attempt)
+                logger.warning(f"API-Fehler (Versuch {attempt + 1}/{MAX_RETRIES}): {e}. Warte {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"API-Fehler nach {MAX_RETRIES} Versuchen: {e}")
+                return None
+    return None
 
 
 def fetch_bookings_from_teburio(start_date: str, end_date: str) -> list | None:
@@ -68,40 +111,36 @@ def fetch_bookings_from_teburio(start_date: str, end_date: str) -> list | None:
             }
         }
 
-        try:
-            response = requests.post(
-                url=settings.teburio_url,
-                json=payload,
-                headers=headers,
-                timeout=30
-            )
-            response.raise_for_status()
-            data = response.json()
+        data = _api_request_with_retry(settings.teburio_url, payload, headers)
 
-            if 'errors' in data:
-                logger.error(f"GraphQL Errors: {data['errors']}")
-                break
+        if data is None:
+            logger.error(f"API-Fehler auf Seite {page}: Keine Antwort nach Retries")
+            return None  # Fehler: Keine unvollständigen Daten verwenden
 
-            analytics = data['data']['bookingsAnalytics']
-            bookings = analytics['bookings']
-            all_bookings.extend(bookings)
+        if 'errors' in data:
+            logger.error(f"GraphQL Errors: {data['errors']}")
+            return None  # Fehler: GraphQL-Fehler sind kritisch
 
-            logger.info(f"Seite {page}: {len(bookings)} Buchungen geholt (Gesamt: {len(all_bookings)})")
+        analytics = data.get('data', {}).get('bookingsAnalytics')
+        if not analytics:
+            logger.error("Ungültige API-Antwort: bookingsAnalytics fehlt")
+            return None
 
-            if not analytics.get('hasMore', False):
-                break
+        bookings = analytics.get('bookings', [])
+        all_bookings.extend(bookings)
 
-            cursor = analytics.get('cursor')
-            if not cursor:
-                break
+        logger.info(f"Seite {page}: {len(bookings)} Buchungen geholt (Gesamt: {len(all_bookings)})")
 
-            page += 1
-            if page > 50:
-                logger.warning("Sicherheits-Abbruch: Zu viele Seiten")
-                break
+        if not analytics.get('hasMore', False):
+            break
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"API-Fehler auf Seite {page}: {e}")
+        cursor = analytics.get('cursor')
+        if not cursor:
+            break
+
+        page += 1
+        if page > 50:
+            logger.warning("Sicherheits-Abbruch: Zu viele Seiten")
             break
 
     return all_bookings if all_bookings else None
@@ -111,72 +150,69 @@ def _booking_to_timeslot(booking_timestamp_ms: int) -> TimeSlot:
     """
     Bestimmt anhand des Buchungs-Timestamps ob Mittag oder Abend.
     """
-    if ZoneInfo:
-        tz = ZoneInfo("Europe/Berlin")
-        booking_dt = datetime.fromtimestamp(booking_timestamp_ms / 1000, tz=tz)
-    else:
-        # Fallback: UTC + 1
-        booking_dt = datetime.fromtimestamp(booking_timestamp_ms / 1000, tz=timezone.utc)
+    booking_dt = _timestamp_to_berlin_datetime(booking_timestamp_ms)
 
-    hour = booking_dt.hour
-
-    if hour < MITTAG_ABEND_GRENZE:
+    if booking_dt.hour < MITTAG_ABEND_GRENZE:
         return TimeSlot.MITTAG
     else:
         return TimeSlot.ABEND
 
 
-def sync_reservations(db, forecast_days: int = 14):
+def sync_reservations(db: Session, forecast_days: int = 14):
     """
     Hauptfunktion: Holt Buchungsdaten von Teburio und speichert
     aggregierte Zusammenfassungen in der DB.
     """
+    tz = _get_berlin_tz()
     today = date.today()
     end = today + timedelta(days=forecast_days)
 
     # Datumsstrings für API
-    if ZoneInfo:
-        tz = ZoneInfo("Europe/Berlin")
-        start_dt = datetime.combine(today, datetime.min.time()).replace(tzinfo=tz)
-        end_dt = datetime.combine(end, datetime.max.time()).replace(tzinfo=tz)
-        start_str = start_dt.isoformat()
-        end_str = end_dt.isoformat()
-    else:
-        start_str = today.strftime("%Y-%m-%dT00:00:00+01:00")
-        end_str = end.strftime("%Y-%m-%dT23:59:59+01:00")
+    start_dt = datetime.combine(today, datetime.min.time()).replace(tzinfo=tz)
+    end_dt = datetime.combine(end, datetime.max.time().replace(microsecond=0)).replace(tzinfo=tz)
+    start_str = start_dt.isoformat()
+    end_str = end_dt.isoformat()
 
     logger.info(f"Starte Reservierungs-Sync: {today} bis {end}")
 
     # 1. Buchungen von API holen
     bookings = fetch_bookings_from_teburio(start_str, end_str)
 
-    if not bookings:
-        logger.warning("Keine Buchungen von API erhalten")
-        return {"status": "error", "message": "Keine Buchungen erhalten"}
+    # None = API-Fehler, [] = keine Buchungen (beides unterschiedlich behandeln)
+    if bookings is None:
+        logger.error("API-Fehler: Sync abgebrochen")
+        return {"status": "error", "message": "API-Fehler beim Abrufen der Buchungen"}
 
     logger.info(f"{len(bookings)} Buchungen von Teburio erhalten")
 
     # 2. Aggregieren: Pro Tag + Zeitfenster zählen
-    daily_stats = {}  # {(date, TimeSlot): {reservations: X, guests: Y}}
+    # Initialisiere alle Tage mit 0 (damit Tage ohne Buchungen auch gespeichert werden)
+    daily_stats = {}
+    for day_offset in range(forecast_days + 1):
+        current_date = today + timedelta(days=day_offset)
+        for slot in TimeSlot:
+            daily_stats[(current_date, slot)] = {'reservations': 0, 'guests': 0}
 
     for booking in bookings:
         # Stornierte und No-Shows ignorieren
         if booking.get('cancelled') or booking.get('noShow'):
             continue
 
-        booking_date = datetime.fromtimestamp(booking['date'] / 1000).date()
+        # Konsistente Timezone-Konvertierung
+        booking_dt = _timestamp_to_berlin_datetime(booking['date'])
+        booking_date = booking_dt.date()
         time_slot = _booking_to_timeslot(booking['date'])
         people = booking.get('people', 0)
 
         key = (booking_date, time_slot)
-        if key not in daily_stats:
-            daily_stats[key] = {'reservations': 0, 'guests': 0}
-
-        daily_stats[key]['reservations'] += 1
-        daily_stats[key]['guests'] += people
+        if key in daily_stats:
+            daily_stats[key]['reservations'] += 1
+            daily_stats[key]['guests'] += people
 
     # 3. In DB speichern (UPSERT: Update wenn existiert, Insert wenn neu)
     saved = 0
+    now = datetime.now(timezone.utc)
+
     for (forecast_date, time_slot), stats in daily_stats.items():
         existing = db.query(ReservationSummary).filter(
             ReservationSummary.forecast_date == forecast_date,
@@ -186,13 +222,14 @@ def sync_reservations(db, forecast_days: int = 14):
         if existing:
             existing.total_reservations = stats['reservations']
             existing.total_guests = stats['guests']
-            existing.synced_at = datetime.now(timezone.utc)
+            existing.synced_at = now
         else:
             new_entry = ReservationSummary(
                 forecast_date=forecast_date,
                 time_slot=time_slot,
                 total_reservations=stats['reservations'],
-                total_guests=stats['guests']
+                total_guests=stats['guests'],
+                synced_at=now
             )
             db.add(new_entry)
 

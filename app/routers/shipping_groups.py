@@ -2,6 +2,7 @@ import os
 from datetime import date
 from uuid import UUID
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import User, ShippingGroup, OrderItem, ApproverSupplier, Order
 from app.models.shipping_group import ShippingGroupStatus
-from app.schemas.shipping_group import ShippingGroupResponse
+from app.schemas.shipping_group import ShippingGroupResponse, ShippingGroupDetailResponse, ShippingGroupOrderInfo
 from app.models.activity_log import ActionType
 
 from app.database import get_db
@@ -28,7 +29,7 @@ router = APIRouter(prefix="/shipping-groups", tags=["shipping-groups"])
 
 @router.get("/", response_model=list[ShippingGroupResponse])
 def get_shipping_groups(
-    status: str = None,
+    status: Optional[ShippingGroupStatus] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -249,3 +250,25 @@ def download_shipping_group_pdf(
         filename=filename,
         media_type="application/pdf"
     )
+
+
+@router.get("/{id}/order", response_model=ShippingGroupDetailResponse)
+def get_shipping_group_order(
+                    id: UUID,
+                    db: Session = Depends(get_db),
+                    current_user: User = Depends(get_current_user)
+):
+    shipping_group = db.query(ShippingGroup).options(
+            joinedload(ShippingGroup.items),
+            joinedload(ShippingGroup.supplier)).filter(
+            ShippingGroup.id == id)
+    if not shipping_group:
+        raise HTTPException(status_code=404, detail="Versandgruppe nicht gefunden")
+    
+    for order in shipping_group:
+        
+    
+
+    
+
+    

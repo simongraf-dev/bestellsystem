@@ -7,7 +7,7 @@ from app.models import User, OrderItem, Supplier, ApproverSupplier
 from app.models.order import OrderStatus
 from app.models.shipping_group import ShippingGroup, ShippingGroupStatus
 from app.models.activity_log import ActionType
-from app.schemas.order import OrderItemResponse, OrderItemUpdate
+from app.schemas.order import OrderItemResponse, OrderItemUpdate, OrderItemAssignSupplier
 
 from app.services.activity_service import log_activity
 from app.services.order_service import _can_edit_order, _get_next_delivery_date
@@ -102,7 +102,7 @@ def delete_order_item(id: UUID,
 @router.patch("/{id}/assign-supplier", response_model=OrderItemResponse)
 def assign_supplier_to_order_item(
     id: UUID,
-    supplier_data: OrderItemAssignSupplier,  # Schema mit supplier_id
+    supplier_data: OrderItemAssignSupplier,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):

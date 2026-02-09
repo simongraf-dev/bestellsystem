@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.models.activity_log import ActivityLog, ActionType
+from app.models.activity_log import ActivityLog
 from app.models.user import User
 from app.models.order import Order
 

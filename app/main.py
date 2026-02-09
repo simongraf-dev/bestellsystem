@@ -2,16 +2,25 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, article, article_groups, users, department, supplier, orders, delivery_days, article_supplier, shipping_groups, approver_supplier, order_items, storage_location, article_storage_location, roles, activities, reservations
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+
+from app.routers import auth, article, article_groups, users, department, supplier, orders, delivery_days, article_supplier, shipping_groups, approver_supplier, order_items, storage_location, article_storage_location, roles, activities, reservations, department_supplier
 from app.config import settings
 from app.utils.logging_config import setup_logging
 from app.middleware.logging_middleware import log_requests
 
 
+from app.utils.rate_limit import limiter
+
 logger = setup_logging()
 logger.info("Application starting...")
 app = FastAPI(title=settings.app_name, debug=settings.debug)
 
+
+app.state.limiter = limiter
 app.middleware("http")(log_requests)
 
 app.add_middleware(
@@ -21,6 +30,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SlowAPIMiddleware)
 
 app.include_router(auth.router)
 app.include_router(article.router)
@@ -39,6 +49,7 @@ app.include_router(storage_location.router)
 app.include_router(article_storage_location.router)
 app.include_router(activities.router)
 app.include_router(reservations.router)
+app.include_router(department_supplier.router)
 
 @app.get("/")
 def root() -> dict:

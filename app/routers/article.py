@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import User, Article, ArticleGroup, OrderItem, Order
+from app.models import User, Article, ArticleGroup, OrderItem, Order, ArticleSupplier, ArticleStorageLocation
 from app.models.order import OrderStatus
 from app.schemas.article import ArticleCreate, ArticleResponse, ArticleUpdate, ArticleOrderHistoryResponse, ArticleOrderHistoryItem
 
@@ -18,18 +18,41 @@ router = APIRouter(prefix="/articles", tags=["articles"])
 @router.get("/", response_model=list[ArticleResponse])
 def get_all_articles(
     name: Optional[str] = None,
+    article_group_id: Optional[UUID] = None,
+    is_active: Optional[bool] = None,
+    supplier_id: Optional[UUID] = None,
+    storage_location_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user), 
     db: Session = Depends(get_db)
     ):
-    query = db.query(Article).options(joinedload(Article.article_group)).filter(Article.is_active == True)
+    query = db.query(Article).options(joinedload(Article.article_group))
+
+    if is_active is not None:
+        query = query.filter(Article.is_active == is_active)
+
+    if article_group_id:
+        query = query.filter(Article.article_group_id == article_group_id)
     
+    if supplier_id:
+        article_ids = db.query(ArticleSupplier.article_id).filter(
+                ArticleSupplier.supplier_id == supplier_id)
+                query = query.filter(Article.id.in_(article_ids))
+
+    if storage_location_id:
+        article_ids = db.query(ArticleStorageLocation.article_id).filter(
+                ArticleStorageLocation.storage_location_id == storage_location_id)
+                query = query.filter(Article.id.in_(article_ids))
     if name:
         query = query.filter(Article.name.ilike(f"%{name}%"))
     
     return query.all()
 
 @router.get("/{id}", response_model=ArticleResponse)
-def get_article_id(id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_article_id(
+                id: UUID,
+                current_user: User = Depends(get_current_user),
+                db: Session = Depends(get_db)
+):
     article = db.query(Article).options(joinedload(Article.article_group)).filter(Article.id == id).first()
     if not article:
         raise HTTPException(status_code=404, detail="Artikel ID nicht in DB")
@@ -37,10 +60,20 @@ def get_article_id(id: UUID, current_user: User = Depends(get_current_user), db:
 
 @router.post("/", response_model=ArticleResponse)
 @require_role(["Admin"])
-def create_article(article: ArticleCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_article(article: ArticleCreate,
+                   current_user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)
+):  
+    # Check ob Artikelgruppe existiert
     group = db.query(ArticleGroup).filter(ArticleGroup.id == article.article_group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Artikelgruppe nicht gefunden")
+    
+    # Check ob Artikel mit gleichem Namen exisitert
+    existing_article = db.query(Article).filter(Article.name.ilike(article.name)).first()
+    if existing_article:
+        raise HTTPException(status_code=409, detail="Artikel mit gleichem Namen existiert bereits")
+    
     new_article = Article(
         name=article.name,
         unit=article.unit,
@@ -54,7 +87,6 @@ def create_article(article: ArticleCreate, current_user: User = Depends(get_curr
     return new_article
 
 @router.patch("/{id}", response_model=ArticleResponse)
-@require_role(["Admin"])
 def update_article(article_update: ArticleUpdate, id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     article = db.query(Article).filter(Article.id == id).first()
     if not article:

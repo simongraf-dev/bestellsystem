@@ -1,10 +1,14 @@
+from uuid import UUID
+from typing import Optional
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
-from uuid import UUID
 
 from app.models import User, Order, OrderItem, Department
-from app.schemas.order import OrderCreate, OrderResponse, OrderUpdate, OrderItemCreate, OrderItemResponse
 from app.models.activity_log import ActionType
+from app.models.order import OrderStatus
+from app.schemas.order import OrderCreate, OrderResponse, OrderUpdate, OrderItemCreate
 
 from app.services import order_service
 from app.database import get_db
@@ -63,6 +67,11 @@ def _get_visible_departments(db: Session, user_department_id: UUID) -> list[UUID
 
 @router.get("/", response_model=list[OrderResponse])
 def get_orders(
+    status: Optional[OrderStatus] = None,
+    department_id: Optional[UUID] = None,
+    creator_id: Optional[UUID] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -73,6 +82,21 @@ def get_orders(
         joinedload(Order.items).joinedload(OrderItem.article),
         joinedload(Order.items).joinedload(OrderItem.supplier)
     ).filter(Order.is_active == True)
+
+    if status:
+        query = query.filter(Order.status == status)
+    
+    if department_id:
+        query = query.filter(Order.department_id == department_id)
+
+    if creator_id:
+        query = query.filter(Order.creator_id == creator_id)
+
+    if date_from:
+        query = query.filter(Order.drafted_on >= date_from)
+        
+    if date_to:
+        query = query.filter(Order.drafted_on <= date_to)
     
     if current_user.role.name != "Admin":
         visible_departments = _get_visible_departments(db, current_user.department_id)

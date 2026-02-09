@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import pyotp
 
 from app.database import get_db
@@ -10,11 +12,19 @@ from app.models import User
 from app.utils.security import verify_password, create_access_token, create_refresh_token, decode_token, get_current_user, require_role, create_temporary_token
 from app.config import settings
 
+from app.utils.rate_limit import limiter
+
 router = APIRouter(prefix="/auth", tags=["auth"])
+
 
 # Login und Prüfung auf 2FA
 @router.post("/login", response_model=LoginResponse)
-def login(credentials: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(
+        request: Request,
+        credentials: LoginRequest,
+        db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.email == credentials.email).first()
     if not user:
         raise HTTPException(status_code=401, detail="Email oder Passwort falsch")
@@ -59,10 +69,13 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-# 2FA-Auth
 
+# 2FA-Auth
 @router.post("/2fa/setup", response_model=TwoFactorSetupResponse)
-def two_fa_auth_setup(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def two_fa_auth_setup(
+                    current_user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)
+):
     if current_user.totp_secret:
         raise HTTPException(status_code=403, detail="2FA-Auth bereits eingerichtet")
     secret = pyotp.random_base32()
@@ -79,7 +92,13 @@ def two_fa_auth_setup(current_user: User = Depends(get_current_user), db: Sessio
     )
     
 @router.post("/2fa/verify")
-def two_fa_setup_verification(entered_code: TwoFactorSetupVerifyRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+@limiter.limit("3/minute")
+def two_fa_setup_verification(
+                            request: Request,
+                            entered_code: TwoFactorSetupVerifyRequest,
+                            current_user: User = Depends(get_current_user),
+                            db: Session = Depends(get_db)
+) -> dict:
     if not current_user.totp_secret:
         raise HTTPException(status_code=403, detail="Kein Secret vorhanden")
     totp = pyotp.TOTP(current_user.totp_secret)
@@ -92,8 +111,13 @@ def two_fa_setup_verification(entered_code: TwoFactorSetupVerifyRequest, current
 
 
 @router.post("/2fa/validate", response_model=TokenResponse)
-def validate_otp(request: TwoFactorValidateRequest, db: Session = Depends(get_db)):
-    payload = decode_token(request.temp_token, "temp",)
+@limiter.limit("5/minute")
+def validate_otp(
+            request: Request,
+            two_fa_request: TwoFactorValidateRequest,
+            db: Session = Depends(get_db)
+):
+    payload = decode_token(two_fa_request.temp_token, "temp",)
     if not payload:
         raise HTTPException(status_code=401, detail="Temporary Token abgelaufen")
     user_id = payload.get("sub")
@@ -102,7 +126,7 @@ def validate_otp(request: TwoFactorValidateRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=403, detail="User nicht in Datenbank")
 
     totp = pyotp.TOTP(user.totp_secret)
-    if not totp.verify(request.code):
+    if not totp.verify(two_fa_request.code):
         raise HTTPException(status_code=401, detail="Code ungültig")
     
     access_token = create_access_token({"sub": (payload.get("sub"))})

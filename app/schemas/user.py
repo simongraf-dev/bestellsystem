@@ -1,6 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from uuid import UUID
 from typing import Optional
+
+MIN_PASSWORD_LENGTH=8
 
 class DepartmentInfo(BaseModel):
     id: UUID
@@ -18,7 +20,7 @@ class RoleInfo(BaseModel):
 class UserCreate(BaseModel):
     name: str
     email: str
-    password_plain: str
+    password_plain: str = Field(min_length=MIN_PASSWORD_LENGTH)
     department_id: UUID
     role_id: UUID
     is_active: bool = True

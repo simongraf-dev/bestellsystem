@@ -6,10 +6,10 @@ from slowapi.util import get_remote_address
 import pyotp
 
 from app.database import get_db
-from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest, TwoFactorSetupResponse, TwoFactorSetupVerifyRequest, LoginResponse, TwoFactorValidateRequest
+from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest, TwoFactorSetupResponse, TwoFactorSetupVerifyRequest, LoginResponse, TwoFactorValidateRequest, PasswordChangeRequest
 from app.schemas.user import UserResponse
 from app.models import User
-from app.utils.security import verify_password, create_access_token, create_refresh_token, decode_token, get_current_user, require_role, create_temporary_token
+from app.utils.security import verify_password, create_access_token, create_refresh_token, decode_token, get_current_user, hash_password, create_temporary_token
 from app.config import settings
 
 from app.utils.rate_limit import limiter
@@ -138,5 +138,21 @@ def validate_otp(
         refresh_token=refresh_token
     )
 
+# Passwort ändern
+@router.patch("/me/password")
+def change_password(
+                request: PasswordChangeRequest,
+                db: Session = Depends(get_db),
+                current_user: User = Depends(get_current_user)
+) -> dict:
+    if not verify_password(request.old_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Altes Passwort ist falsch")
+    if request.old_password == request.new_password:
+        raise HTTPException(status_code=400, detail="Das neue Passwort muss sich von dem bestehenden Passwort unterscheiden")
+    
+    new_password_hash = hash_password(request.new_password)
+    current_user.password_hash = new_password_hash
+    db.commit()
 
+    return {"message": "Passwort erfolgreich geändert"}
     

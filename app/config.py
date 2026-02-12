@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     # Database
     database_url: str
     
-    
+
     # Auth/JWT
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7

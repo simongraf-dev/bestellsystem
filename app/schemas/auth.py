@@ -1,5 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
+
+MIN_PASSWORD_LENGTH=8
 
 class LoginRequest(BaseModel):
     email: str
@@ -35,3 +37,7 @@ class TwoFactorSetupResponse(BaseModel):
 # Bestätigung das beim Setup der QR Code gescannt wurde
 class TwoFactorSetupVerifyRequest(BaseModel):
     code: str
+
+class PasswordChangeRequest(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
